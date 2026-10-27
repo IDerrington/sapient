@@ -1,0 +1,3 @@
+[submodule "proto"]
+	path = sapient_msg
+	url = https://github.com/dstl/SAPIENT-Proto-Files.git
