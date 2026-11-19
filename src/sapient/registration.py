@@ -1,9 +1,14 @@
 
+import logging
+
 from sapient.config import RadarConfig
 from sapient_msg.bsi_flex_335_v2_0 import range_bearing_pb2, registration_pb2
 
 class RegistrationBuilder:
     def __init__(self, radar_config: RadarConfig):
+        
+        self.log = logging.getLogger(__name__)
+
         self.config = radar_config
     
     def build(self):
@@ -22,10 +27,12 @@ class RegistrationBuilder:
         Mode Definition,
         """
 
+        self.log.debug("Building registration message for radar sensor: %s", self.config.name)
+
         # Node definition
         node_definition_list = self._build_node_definition()
         
-        # Caoabilities definition
+        # Capabilities definition
         capabilities_definition_list = self._build_capabilities_definition()
 
         # Status definition
@@ -65,6 +72,8 @@ class RegistrationBuilder:
     
         node_list.append(node_definition)
 
+        self.log.debug("Node definition built: %s", node_definition)
+        
         return node_list
     
     def _build_status_definition(self) -> registration_pb2.Registration.StatusDefinition:
@@ -80,6 +89,7 @@ class RegistrationBuilder:
             registration_pb2.Registration.TIME_UNITS_SECONDS
         )
         
+        self.log.debug("Status definition built: %s", status_definition)
         return status_definition
     
     def _build_capabilities_definition(self) -> list[registration_pb2.Registration.Capability]:
@@ -106,6 +116,8 @@ class RegistrationBuilder:
         capabilities_definition.units = "m"
         capabilities.append(capabilities_definition)
 
+        self.log.debug("Capabilities definition built: %s", capabilities)
+
         return capabilities
     
     def _build_mode_definition(self) -> list[registration_pb2.Registration.ModeDefinition]:
@@ -127,6 +139,8 @@ class RegistrationBuilder:
    
         mode_definition.append(default_mode)
         
+        self.log.debug("Mode definition built: %s", mode_definition)
+
         return mode_definition
     
     def _build_config_definition(self) -> list[registration_pb2.Registration.ConfigurationData]:
@@ -148,7 +162,9 @@ class RegistrationBuilder:
         config_definition.software_version = self.config.sw_version
 
         config_definition_list.append(config_definition)
-    
+
+        self.log.debug("Configuration data built: %s", config_definition_list)
+
         return config_definition_list
 
     def _build_task_definition(self) -> registration_pb2.Registration.TaskDefinition:
@@ -161,6 +177,8 @@ class RegistrationBuilder:
         default_task.concurrent_tasks = 1
         default_task.region_definition.CopyFrom(self._build_region_definition())
   
+        self.log.debug("Task definition built: %s", default_task)
+
         return default_task  
 
     def _build_region_definition(self) -> registration_pb2.Registration.RegionDefinition:
@@ -181,6 +199,8 @@ class RegistrationBuilder:
         #location_type_definition = self._build_location_definition()
         #region_type_definition.location_type.extend([location_type_definition]) 
        
+        self.log.debug("Region definition built: %s", region_type_definition)   
+
         return region_type_definition
 
     def _build_location_definition(self) -> list[registration_pb2.Registration.LocationType]:
@@ -204,7 +224,11 @@ class RegistrationBuilder:
 
 if __name__ == "__main__":
  
-
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )   
     
     # Create a protobuf registration message for the radar sensor
     radar = RadarConfig(

@@ -1,6 +1,10 @@
 from dataclasses import field, dataclass
 
-
+@dataclass
+class Location:
+    latitude: float
+    longitude: float
+    altitude: float
 
 @dataclass
 class Duration:
@@ -13,7 +17,6 @@ class Capability:
     type: str
     value: str
     units: str
-
 
 @dataclass
 class Mode:
@@ -42,11 +45,12 @@ class SensorConfig:
     hw_version: str
     sw_version: str
     serial_number: str
-    icd_version: str = "2.0"
+    icd_version: str = "BSI Flex 335 v2.0"
     node_sub_types: list[str] = field(default_factory=list)
     capabilities: list[Capability] = field(default_factory=list)
     status_interval_s: float = 5.0
-    mode_settle_time_s: float = 0.0
+    mode_settle_time_s: float = 0.1
+    location : Location = field(default_factory=lambda: Location(latitude=0.0, longitude=0.0, altitude=0.0))    
 
 
     
