@@ -119,14 +119,12 @@ class SapientClient():
         """
         Start the SAPIENT client with the given configuration.
         
-        args:
-            config: SensorConfig object containing the sensor configuration.
-            host: Hostname or IP address of the SAPIENT server.
-            port: Port number of the SAPIENT server.
-            timeout: Timeout for the TCP connection in seconds.
+        :param config: SensorConfig object containing the sensor configuration.
+        :param host: Hostname or IP address of the SAPIENT server.
+        :param port: Port number of the SAPIENT server.
+        :param timeout: Timeout for the TCP connection in seconds.
 
-        returns:
-            None
+        :returns: None
         """
 
         status_interval_s = config.status_interval_s
@@ -172,6 +170,9 @@ class SapientClient():
     def stop(self):
         """
         Stop the SAPIENT client.
+        
+        :returns: None
+
         """
         self.log.info("Stopping SAPIENT client...")
         self.work_queue.put(SapientQueItem(message=SapientMessageType.STOP))
@@ -179,6 +180,9 @@ class SapientClient():
     def send_detection(self, detection: DetectionPayload):
         """
         Send a detection message to the SAPIENT server.
+        
+        :param detection: DetectionPayload object containing the detection data.
+        :returns: None
         """
 
         self.log.debug("Sending detection: %s", detection)
@@ -188,11 +192,8 @@ class SapientClient():
         """
         Send a registration message to the SAPIENT server.
         
-        args:
-            config: SensorConfig object containing the sensor configuration.
-
-        returns:
-            None
+        :param config: SensorConfig object containing the sensor configuration.
+        :returns: None
         """
         self.log.info("Sending registration message...")
         
@@ -242,8 +243,8 @@ class SapientClient():
         """
         Send a status report message to the SAPIENT server.
         
-        returns:
-            None
+        :param new_info: Boolean indicating whether the status report contains new information.
+        :returns: None
         """
         self.log.info("Sending status report message...")
         
@@ -270,11 +271,8 @@ class SapientClient():
         """
         Send a detection message to the SAPIENT server.
         
-        args:
-            detection: DetectionPayload object containing the detection data.
-
-        returns:
-            None
+        :param detection: DetectionPayload object containing the detection data.
+        :returns: None
         """
 
         detection_builder = DetectionReportBuilder()
@@ -303,6 +301,9 @@ class SapientClient():
         """
         Run the SAPIENT client work queue.
         This method processes items in the work queue and sends them to the SAPIENT server.
+        
+        :param status_interval_s: Interval in seconds between status reports.
+        :returns: None
         """
         next_status_at = time.monotonic() + status_interval_s
 
@@ -372,8 +373,8 @@ def main() -> None:
                                payload =DetectionPayload(target_id=1, 
                                                          range_m=100.0, 
                                                          velocity_mps=10.0,
-                                                           ))
-    
+                                                        ))
+
     for i in range(5):
         sapient.send_detection(detection)
         time.sleep(1.0)
@@ -382,7 +383,6 @@ def main() -> None:
     time.sleep(10.0)
 
     sapient.stop()
-
 
 
 if __name__ == "__main__":
