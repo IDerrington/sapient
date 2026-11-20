@@ -5,6 +5,12 @@ from sapient.config import RadarConfig
 from sapient_msg.bsi_flex_335_v2_0 import range_bearing_pb2, registration_pb2
 
 class RegistrationBuilder:
+    """
+    Class to build a registration message for a radar sensor based on the provided configuration.
+    
+    :param radar_config: RadarConfig object containing the radar sensor configuration.
+
+    """
     def __init__(self, radar_config: RadarConfig):
         
         self.log = logging.getLogger(__name__)
@@ -13,18 +19,11 @@ class RegistrationBuilder:
     
     def build(self):
         """
-        This method builds a registration message for the radar sensor based 
+        builds a registration message for the radar sensor based 
         on the provided configuration.
 
         Definition for the registration message is based on the protobuf definition in #
-        BSI Flex 335 v2.0. The registration message includes the 
-        node definition [List[NodeDefinition]], , 
-        name            [string], 
-        short name      [string],
-        ICD version     [string], 
-        Capabilities    [list[Capability]]
-        Status Definition,
-        Mode Definition,
+        BSI Flex 335 v2.0. 
         """
 
         self.log.debug("Building registration message for radar sensor: %s", self.config.name)
@@ -59,10 +58,12 @@ class RegistrationBuilder:
     
     def _build_node_definition(self) -> list[registration_pb2.Registration.NodeDefinition]:
         """
-        This method builds the node definition for the radar sensor based on the 
+        Builds the node definition for the radar sensor based on the 
         provided configuration.
         The node definition includes the node type, subtypes, and other relevant 
         information.
+
+        :returns: List of NodeDefinition messages
         """
         node_list = []
 
@@ -78,10 +79,12 @@ class RegistrationBuilder:
     
     def _build_status_definition(self) -> registration_pb2.Registration.StatusDefinition:
         """
-        This method builds the status definition for the radar sensor based on 
+        Builds the status definition for the radar sensor based on 
         the provided configuration.
         
-        The status definition includes the status interval and other relevant information.
+        The status definition includes the status interval.
+
+        :returns: StatusDefinition message
         """
         status_definition = registration_pb2.Registration.StatusDefinition()
         status_definition.status_interval.value = self.config.status_interval_s
@@ -94,10 +97,12 @@ class RegistrationBuilder:
     
     def _build_capabilities_definition(self) -> list[registration_pb2.Registration.Capability]:
         """
-        This method builds the capabilities definition for the radar sensor 
+        Builds the capabilities definition for the radar sensor 
         based on the provided configuration.
         The capabilities definition includes the list of capabilities 
         advertised during registration.
+
+        :returns: List of Capability messages
         """
 
         capabilities = []
@@ -122,9 +127,11 @@ class RegistrationBuilder:
     
     def _build_mode_definition(self) -> list[registration_pb2.Registration.ModeDefinition]:
         """
-        This method builds the mode definition for the radar sensor based on 
+        Builds the mode definition for the radar sensor based on 
         the provided configuration. 
         The mode definition includes the list of modes supported by the sensor.
+        
+        :returns: List of ModeDefinition messages
         """
         mode_definition = []
         
@@ -145,11 +152,11 @@ class RegistrationBuilder:
     
     def _build_config_definition(self) -> list[registration_pb2.Registration.ConfigurationData]:
         """
-        This method builds the configuration data for the radar sensor based on
+        Builds the configuration data for the radar sensor based on
         the provided configuration.The configuration data includes any additional 
         configuration parameters specific to the sensor.
 
-        @return: List of ConfigurationData messages
+        :returns: List of ConfigurationData messages
         """
 
         config_definition_list = []
@@ -169,9 +176,11 @@ class RegistrationBuilder:
 
     def _build_task_definition(self) -> registration_pb2.Registration.TaskDefinition:
         """
-        This method builds the task definition for the radar sensor based on 
+        Builds the task definition for the radar sensor based on 
         the provided configuration. The task definition includes the list of 
         tasks supported by the sensor.
+
+        :returns: TaskDefinition message
         """
         default_task = registration_pb2.Registration.TaskDefinition()
         default_task.concurrent_tasks = 1
@@ -183,9 +192,11 @@ class RegistrationBuilder:
 
     def _build_region_definition(self) -> registration_pb2.Registration.RegionDefinition:
         """
-        This method builds the region definition for the radar sensor based on 
+        Builds the region definition for the radar sensor based on 
         the provided configuration. The region definition includes the list of 
         regions supported by the sensor.
+
+        :returns: RegionDefinition message
         """
 
         region_type = []
@@ -205,8 +216,10 @@ class RegistrationBuilder:
 
     def _build_location_definition(self) -> list[registration_pb2.Registration.LocationType]:
         """
-        This method builds the location definition for the radar sensor based on the provided configuration.
+        Builds the location definition for the radar sensor based on the provided configuration.
         The location definition includes the list of locations supported by the sensor.
+
+        :returns: List of LocationType messages
         """
 
         location_type = []

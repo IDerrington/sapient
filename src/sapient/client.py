@@ -1,28 +1,48 @@
+"""
+Sapient Client module for sending messages to a SAPIENT server.
+This module provides a SapientClient class that can be used to send registration, status, detection
+, and alert messages to a SAPIENT server. The client uses a work queue to manage the sending of messages and can be started and stopped as needed.
+The SapientClient class is designed to be used in a multi-threaded environment, allowing for
+    concurrent message sending and processing. The client also supports a timeout mechanism for the work queue, allowing for graceful handling of situations where the server is unresponsive.
+
+Authors:
+    - Iain Derrington
+
+Company:
+    - Analog Devices, Inc.
+
+License:
+    - This code is licensed under the Apache License, Version 2.0. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0. Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the` License for the specific language governing permissions and limitations under the License.       
+
+"""
 from dataclasses import dataclass, field
 from enum import Enum, auto
 import logging
+import math
 import queue
 import threading
 
 import time
 from uuid import uuid4
 
+from ulid import ULID
+
 from sapient import config
-from sapient import message
-from sapient import transport
-from sapient import registration
-from sapient import status_report
+
 
 from sapient.config import RadarConfig, SensorConfig
-from sapient.detection_report import DetectionReport
-from sapient.message import Message
+from sapient.detection_report import DetectionReportBuilder
+from sapient.message import SapientMessageBuilder
 from sapient.registration import RegistrationBuilder
-from sapient.status_report import StatusReport
+from sapient.status_report import StatusReportBuilder
 from sapient.transport import TCPTransport
 
-from sapient_msg.bsi_flex_335_v2_0 import range_bearing_pb2, registration_pb2, sapient_message_pb2
+from sapient_msg.bsi_flex_335_v2_0 import range_bearing_pb2, registration_pb2, sapient_message_pb2, status_report_pb2
 
 class SapientMessageType(Enum):
+    """
+    An enumeration of SAPIENT message types.
+    """
     DETECTION = auto()
     ALERT = auto()
     TASK = auto()
@@ -33,13 +53,32 @@ class SapientMessageType(Enum):
 
 @dataclass
 class DetectionPayload:
+    """
+    A class to represent a detection payload.
+    Attributes:
+        target_id (int): The ID of the detected target.
+        range_m (float): The range to the detected target in meters.
+        azimuth_deg (float): The azimuth angle to the detected target in
+                             degrees. Default is 0.0.
+        elevation_deg (float): The elevation angle to the detected target
+                               in degrees. Default is 0.0.
+
+        Spherical coordinates are used for the detection payload, with the range, azimuth, and elevation angles defining the position of the detected target relative to the sensor.    
+    """
     target_id: int
     range_m: float
-    velocity_mps: float
+    azimuth_deg: float = 0.0
+    elevation_deg: float = 0.0
 
 
 @dataclass
 class AlertPayload:
+    """
+    A class to represent an alert payload.
+    Attributes:
+        severity (int): The severity level of the alert.
+        description (str): A description of the alert.
+    """ 
     severity: int
     description: str
 
@@ -68,6 +107,7 @@ class SapientClient():
         self.port = None
         self.timeout = None
         self.node_id = str(uuid4())
+        self.destination_id = None
 
         self.work_queue = queue.Queue()
 
@@ -89,18 +129,42 @@ class SapientClient():
             None
         """
 
+        status_interval_s = config.status_interval_s
+        
+        if not math.isfinite(status_interval_s) or status_interval_s <= 0:
+            raise ValueError("Status interval must be finite and positive")
+
         self.host = host
         self.port = port
         self.timeout = timeout
 
         self.log.info("Starting SAPIENT client...")
+
+        # Create a TCP transport and send the registration message
+        self.transport = TCPTransport(host="localhost", port=14000, timeout=5.0)
         
-        self._send_registration(config)
-        self._send_status_report(config)
+        try:
+            self.transport.connect()
+            self._send_registration(config)
+        except Exception as e:
+            self.log.error("Error during transport: %s", e)
+            self.transport.close()
+            raise
+
+
+        # Create a status report
+        sts_builder = StatusReportBuilder(config)
+        self.status_report = sts_builder.build(mode=self.registration.mode_definition[0].mode_name)
+        
+        # Send the initial status report to the SAPIENT server
+        self._send_status_report(new_info=True)
 
         self.log.info("Starting work queue thread...")
-        
-        self.worker_thread = threading.Thread(target=self._run)
+
+        self.worker_thread = threading.Thread(
+            target=self._run,
+            args=(status_interval_s,),
+        )
         self.worker_thread.start()
 
         self.log.info("SAPIENT client started successfully.")
@@ -133,78 +197,68 @@ class SapientClient():
         self.log.info("Sending registration message...")
         
         # Build registration message for the radar sensor
-        builder = RegistrationBuilder(config)
-        self.registration = builder.build()
+        reg_builder = RegistrationBuilder(config)
+        self.registration = reg_builder.build()
 
         # Create a SAPIENT message with the registration payload
-        message = Message(node_id=self.node_id, 
-                          payload=self.registration)
-    
-        message = message.build()
+        msg_builder = SapientMessageBuilder(node_id=self.node_id)
+        message = msg_builder.build(payload=self.registration)
         payload = message.SerializeToString()
 
-        # Create a TCP transport and send the registration message
-        self.transport = TCPTransport(host="localhost", port=14000, timeout=5.0)
-        
-        try:
-            self.transport.connect()
-            self.transport.send(payload)
-            rx_payload = self.transport.receive()
+        # Transmit playload to the SAPIENT server using the TCP transport
+        self.transport.send(payload)
+        rx_payload = self.transport.receive()
 
-        except Exception as e:
-            self.log.error("Error during transport: %s", e)
-
-
-        # create a sapient message to hold received payload
         rx_message = sapient_message_pb2.SapientMessage()
 
         # parse the received payload into the sapient message
         rx_message.ParseFromString(rx_payload)
 
         self.log.debug("Received message: %s", rx_message)
-    
-        # we're expecting the content of the received message to be a 
-        # registration response
+
+        # check that the received message is a registration ack and that it 
+        # was addressed to this node
+        if rx_message.destination_id != self.node_id:
+            raise RuntimeError("Registration reply was addressed to another node")
 
         reply_type = rx_message.WhichOneof("content")
 
-        if reply_type == "registration_ack":
-            ack = rx_message.registration_ack
-            
-            if ack.acceptance:
-                self.log.info("Registration accepted")
-            else:
-                self.log.warning("Registration rejected: %s",
-                        ", ".join(ack.ack_response_reason))
-                
-        elif reply_type == "error":
-            self.log.error("Registration error: %s",
-                  ", ".join(rx_message.error.error_message))
-            
-        else:
-            self.log.warning("Unexpected registration reply: %s", reply_type)
+        if reply_type == "error":
+            reason = ", ".join(rx_message.error.error_message) or "No details provided"
+            raise RuntimeError(f"Registration error: {reason}")
 
-    def _send_status_report(self, config: SensorConfig):
+        if reply_type != "registration_ack":
+            raise RuntimeError(f"Expected RegistrationAck, got {reply_type}")
+
+        ack = rx_message.registration_ack
+        if not ack.acceptance:
+            reason = ", ".join(ack.ack_response_reason) or "No reason provided"
+            raise RuntimeError(f"Registration rejected: {reason}")
+
+        self.destination_id = rx_message.node_id
+        self.log.info("Registration accepted")
+
+    def _send_status_report(self, new_info: bool = False):
         """
         Send a status report message to the SAPIENT server.
         
-        args:
-            config: SensorConfig object containing the sensor configuration.
-
         returns:
             None
         """
         self.log.info("Sending status report message...")
+        
+        # Update the status report timestamp and report_id
+        
+        info = status_report_pb2.StatusReport.Info
+        self.status_report.info = info.INFO_NEW if new_info else info.INFO_UNCHANGED
+        
+        self.status_report.report_id = str(ULID())
 
-        # Create a status report message for the radar sensor
-        status = StatusReport()
-        status_report = status.build(mode=self.registration.mode_definition[0].mode_name)
-    
         # Create a SAPIENT message with the status report payload
-        message = Message(node_id=self.node_id, 
-                          payload=status_report)
+        msg_builder = SapientMessageBuilder(node_id=self.node_id)
+        message = msg_builder.build(destination_id=self.destination_id, 
+                                    payload=self.status_report)
     
-        message = message.build()
         payload = message.SerializeToString()
 
         try:
@@ -222,62 +276,74 @@ class SapientClient():
         returns:
             None
         """
-        self.log.info("Building detection message...")
 
-        detetion_msg = DetectionReport( coordinate_system=range_bearing_pb2.RangeBearing.CoordinateSystem.SPHERICAL,
-                                        datum=range_bearing_pb2.RangeBearing.Datum.WGS84)
-        
-        detection_payload = detetion_msg.build(cordinates = range_bearing_pb2.RangeBearing(
-                                                    elevation = detection.velocity_mps,
-                                                    azimuth = 0.0,
+        detection_builder = DetectionReportBuilder()
+        detection_payload = detection_builder.build(coordinates = range_bearing_pb2.RangeBearing(
+                                                    elevation = detection.elevation_deg,
+                                                    azimuth = detection.azimuth_deg,
                                                     range = detection.range_m,
+                                                    coordinate_system = range_bearing_pb2.RANGE_BEARING_COORDINATE_SYSTEM_DEGREES_M,
+                                                    datum = range_bearing_pb2.RANGE_BEARING_DATUM_TRUE
                                             ))
         
         # Create a SAPIENT message with the detection payload
-        message = Message(node_id=self.node_id, 
-                          payload=detection_payload)
-    
-        message = message.build()
+        msg_builder = SapientMessageBuilder(node_id=self.node_id)
+        message = msg_builder.build(destination_id=self.destination_id, 
+                                    payload=detection_payload)
         payload = message.SerializeToString()
+
+        self.log.debug("Sending detection message: %s", detection_payload)
 
         try:
             self.transport.send(payload)
         except Exception as e:
             self.log.error("Error during transport: %s", e)
 
-    def _run(self):
+    def _run(self, status_interval_s: float) -> None:
         """
         Run the SAPIENT client work queue.
         This method processes items in the work queue and sends them to the SAPIENT server.
         """
+        next_status_at = time.monotonic() + status_interval_s
 
         while True:
-            try:
-                item = self.work_queue.get(timeout=self.timeout)
+            remaining = next_status_at - time.monotonic()
+            
+            if remaining <= 0:
+                self._send_status_report(new_info=False)
                 
+                # Skip missed intervals if a socket write delayed the worker.
+                elapsed = time.monotonic() - next_status_at
+                intervals = int(elapsed // status_interval_s) + 1
+                next_status_at += intervals * status_interval_s
+                continue
+
+            try:
+                item = self.work_queue.get(timeout=remaining)
+            except queue.Empty:
+                continue
+
+            try:
                 match item.message:
                     case SapientMessageType.DETECTION:
-                        self.log.debug("Processing detection: %s", item.payload)
+                        self.log.info("Sending detection message...")
                         self._send_detection(item.payload)
 
                     case SapientMessageType.ALERT:
-                        self.log.debug("Processing alert: %s", item.payload)
+                        self.log.info("Sending detection message...")
 
                     case SapientMessageType.STATUS:
-                        self.log.debug("Processing status: %s", item.payload)
+                        self.log.info("Sending status message...")
 
                     case SapientMessageType.REGISTRATION:
-                        self.log.debug("Processing registration: %s", item.payload) 
+                        self.log.info("Sending registration message...")
 
                     case SapientMessageType.STOP:
                         self.log.info("Stopping SAPIENT client...")
-                        self.work_queue.task_done()
-                        break       
-
+                        break
+            finally:
                 self.work_queue.task_done()
 
-            except queue.Empty:
-                self.log.info("Work queue timed out, calling on_timeout()`")
                 
 def main() -> None:
     # Create radar configuration and node_id.
@@ -302,23 +368,26 @@ def main() -> None:
                   port=14000, 
                   timeout=5.0)
     
-
     detection = SapientQueItem(message=SapientMessageType.DETECTION, 
                                payload =DetectionPayload(target_id=1, 
                                                          range_m=100.0, 
-                                                         velocity_mps=10.0)   )
-   
+                                                         velocity_mps=10.0,
+                                                           ))
+    
     for i in range(5):
         sapient.send_detection(detection)
         time.sleep(1.0)
+        detection.payload.range_m += 10
+
+    time.sleep(10.0)
 
     sapient.stop()
 
-    
+
 
 if __name__ == "__main__":
     logging.basicConfig(
-        level=logging.DEBUG,
+        level=logging.INFO,
         format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )

@@ -9,6 +9,11 @@ class TCPTransport:
         """
         TCPTransport class is responsible for establishing a TCP connection to 
         a specified host and port.
+
+        :param host: The hostname or IP address of the server to connect to.
+        :param port: The port number on the server to connect to.
+        :param timeout: The timeout for the connection in seconds (default is 5.0 seconds).
+
         """
         self.log = logging.getLogger(__name__)
         
@@ -20,6 +25,8 @@ class TCPTransport:
     def connect(self)-> None:
         """
         Establish a TCP connection to the specified host and port.
+        
+        :raises RuntimeError: If the transport is already connected.
         """
 
         if self._socket is not None:
@@ -39,6 +46,10 @@ class TCPTransport:
     def send(self, payload: bytes) -> None:
         """
         Send a payload over the established TCP connection.
+
+        :param payload: The payload to send as bytes.
+        :raises RuntimeError: If the transport is not connected.
+        :raises ValueError: If the payload length exceeds 32-bit unsigned integer limit.
         """
         if self._socket is None:
             raise RuntimeError("Transport is not connected")
@@ -63,6 +74,9 @@ class TCPTransport:
         """
         Receive a payload from the established TCP connection.
         The first 4 bytes of the received data represent the length of the payload.
+
+        :returns: The received payload as bytes.
+        :raises RuntimeError: If the transport is not connected.
         """
         if self._socket is None:
             raise RuntimeError("Transport is not connected")
@@ -78,6 +92,10 @@ class TCPTransport:
     def _recv_exact(self, num_bytes: int) -> bytes:
         """ 
         Receive an exact number of bytes from the socket.
+        
+        :param num_bytes: The number of bytes to receive.
+        :returns: The received bytes.
+        :raises RuntimeError: If the socket connection is closed unexpectedly.
         """
         buffer = bytearray()
         while len(buffer) < num_bytes:

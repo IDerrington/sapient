@@ -1,0 +1,69 @@
+import logging
+import time
+from uuid import uuid4
+
+
+from sapient.client import DetectionPayload, SapientClient, SapientMessageType, SapientQueItem
+from sapient.config import RadarConfig, Location
+
+def main() -> None:
+    # Create radar configuration and node_id.
+    # Build the registration and SapientMessage envelope.
+    # Connect, send, and close using try/finally.
+
+    # Ideally we get the location from GPS or some other source, 
+    # but for this example we will hardcode it.
+    location = Location(latitude=37.7749, longitude=-122.4194, altitude=10.0)
+    
+    radar = RadarConfig(
+        name = "Radar",
+        model = "CN0566",
+        short_name= "Phaser",
+        serial_number= "123456789",
+        hw_version = "C",
+        sw_version = "1.0.0",
+        status_interval_s = 5.0,
+        max_range_m = "200.0",
+        min_range_m = "0.5",
+        location=location
+    )
+
+    # Generate a unique node_id for this radar sensor
+
+    
+    sapient = SapientClient()
+    try:
+        sapient.start(config=radar, 
+                  host="localhost", 
+                  port=14000, 
+                  timeout=5.0)
+    except Exception as e:
+        logging.error("Failed to start SapientClient: %s", e)
+        return
+    
+    detection = SapientQueItem(message=SapientMessageType.DETECTION, 
+                               payload=DetectionPayload( target_id=1, 
+                                                         range_m=100.0, 
+                                                         azimuth_deg=30.0,
+                                                         elevation_deg=5.0,
+                                                        ))
+    for i in range(20):
+        sapient.send_detection(detection)
+        time.sleep(1.0)
+        detection.payload.range_m += 10
+
+    time.sleep(10.0)
+
+    sapient.stop()
+    
+
+if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+    logging.info("Starting registration example")
+    main()
+    logging.info("Finished registration example")

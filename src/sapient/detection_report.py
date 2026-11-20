@@ -1,54 +1,53 @@
 import logging
-import ulid
+from  ulid import ULID
 
 from sapient_msg.bsi_flex_335_v2_0 import detection_report_pb2, location_pb2, range_bearing_pb2
 
-class DetectionReport():
+class DetectionReportBuilder():
     """
-    Class to build a detection report message.
+    Class to build a detection report message as per BSI Flex 335 v2.0:2024-03, 
+    Table 69:  Field values of the “Detection report” field
+
     """
-    def __init__(self,
-                 coordinate_system: range_bearing_pb2.RangeBearing.CoordinateSystem = range_bearing_pb2.RangeBearing.CoordinateSystem.CARTESIAN,
-                 datum: range_bearing_pb2.RangeBearing.Datum = range_bearing_pb2.RangeBearing.Datum.WGS84) -> None:
+    def __init__(self) -> None:
         self.log = logging.getLogger(__name__)
         
-        self.coordinate_system = coordinate_system
-        self.datum = datum
 
-    def build(self, cordinates: location_pb2.Location | range_bearing_pb2.RangeBearing) -> detection_report_pb2.DetectionReport:
+    def build(self, coordinates: location_pb2.Location | range_bearing_pb2.RangeBearing) -> detection_report_pb2.DetectionReport:
         """
         Build a detection report message.
+        :param coordinates: Location or RangeBearing object
+        :returns: The constructed DetectionReport message.
+        :raises ValueError: If the coordinates type is not Location or RangeBearing.
         """
-        
-        self.log.info("Building detection report message")
         
         report = detection_report_pb2.DetectionReport()
         
-        report.report_id = (str)(ulid.new())
+        report.report_id = (str)(ULID())
         report.object_id =  report.report_id
 
         # report.task_id = "task_123"
         # report.state = "active"
 
-        if cordinates is not None:
-            if isinstance(cordinates, location_pb2.Location):
+        if coordinates is not None:
+            if isinstance(coordinates, location_pb2.Location):
                 location = location_pb2.Location()
-                location.x = cordinates.x
-                location.y = cordinates.y
+                location.x = coordinates.x
+                location.y = coordinates.y
                 
-                location.coordinate_system = self.coordinate_system
-                location.datum = self.datum
+                location.coordinate_system = coordinates.coordinate_system
+                location.datum = coordinates.datum
                 
                 report.location.CopyFrom(location)
 
-            elif isinstance(cordinates, range_bearing_pb2.RangeBearing):
+            elif isinstance(coordinates, range_bearing_pb2.RangeBearing):
                 location = range_bearing_pb2.RangeBearing()
-                location.elevation = 2
-                location.azimuth = 3
-                location.range = 4
+                location.elevation = coordinates.elevation
+                location.azimuth = coordinates.azimuth
+                location.range = coordinates.range
 
-                location.coordinate_system = self.coordinate_system
-                location.datum = self.datum
+                location.coordinate_system = coordinates.coordinate_system
+                location.datum = coordinates.datum
                 
                 report.range_bearing.CopyFrom(location)
 
@@ -59,13 +58,15 @@ class DetectionReport():
         #track_object_info = detection_report_pb2.TrackObjectInfo()
         #track_object_info.object_type = detection_report_pb2.TrackObjectInfo.ObjectType.VEHICLE
         #track_object_info.value = "Car"
-        #report.track_object_info.CopyFrom(track_object_info)    
+        #report.track_object_info.CopyFrom(track_object_info)
+
+        self.log.debug(f"Detection report built: {report}")
 
         return report
     
 if __name__ == "__main__":
     # Example usage of the DetectionReport class
-    report = DetectionReport()
+    report = DetectionReportBuilder()
     detection_report_message = report.build()
     payload = detection_report_message.SerializeToString()
 
